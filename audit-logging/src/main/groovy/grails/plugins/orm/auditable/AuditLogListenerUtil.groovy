@@ -18,6 +18,8 @@
 */
 package grails.plugins.orm.auditable
 
+import grails.plugins.orm.auditable.utils.ReflectionUtils
+import grails.util.Environment
 import grails.util.Holders
 
 import org.grails.core.artefact.DomainClassArtefactHandler
@@ -34,6 +36,9 @@ import javax.servlet.http.HttpSession
  * the plugin or as default utilities.
  */
 class AuditLogListenerUtil {
+
+    private static ConfigObject _auditLogConfig;
+
     /**
      * Returns true for auditable entities, false otherwise.
      *
@@ -204,5 +209,64 @@ Last attribute resolved class ${res?.getClass()} value ${res}
             }
         }
         return res?.toString() ?: null
+    }
+
+
+    /**
+     * Parse and load the auditLog configuration.
+     * @return the configuration
+     */
+    public static synchronized ConfigObject getAuditLogConfig() {
+        if (_auditLogConfig == null) {
+            reloadAuditLogConfig();
+        }
+        return _auditLogConfig;
+    }
+
+    /**
+     * Merge in a secondary config (provided by a plugin as defaults) into the main config.
+     * @param currentConfig the current configuration
+     * @param className the name of the config class to load
+     */
+    private static void mergeConfig(final ConfigObject currentConfig, final String className) {
+        GroovyClassLoader classLoader = new GroovyClassLoader(AuditLogListenerUtil.class.getClassLoader());
+        ConfigSlurper slurper = new ConfigSlurper(Environment.getCurrent().getName());
+        ConfigObject secondaryConfig;
+        try {
+            secondaryConfig = slurper.parse(classLoader.loadClass(className));
+        }
+        catch (ClassNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+
+        _auditLogConfig = mergeConfig(currentConfig, (ConfigObject)secondaryConfig.getProperty("security"));
+        ReflectionUtils.setAuditLogConfig(_auditLogConfig);
+    }
+
+    /**
+     * Merge two configs together. The order is important; if <code>secondary</code> is not null then
+     * start with that and merge the main config on top of that. This lets the <code>secondary</code>
+     * config act as default values but let user-supplied values in the main config override them.
+     *
+     * @param currentConfig the main config, starting from Config.groovy
+     * @param secondary new default values
+     * @return the merged configs
+     */
+    private static ConfigObject mergeConfig(final ConfigObject currentConfig, final ConfigObject secondary) {
+        ConfigObject config = new ConfigObject();
+        if (secondary == null) {
+            if (currentConfig != null) {
+                config.putAll(currentConfig);
+            }
+        }
+        else {
+            if (currentConfig == null) {
+                config.putAll(secondary);
+            }
+            else {
+                config.putAll(secondary.merge(currentConfig));
+            }
+        }
+        return config;
     }
 }

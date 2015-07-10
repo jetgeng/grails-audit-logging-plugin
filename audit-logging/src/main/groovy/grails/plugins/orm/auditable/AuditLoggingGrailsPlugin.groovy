@@ -19,11 +19,7 @@ package grails.plugins.orm.auditable
  * under the License.
 */
 
-import grails.plugins.orm.auditable.AuditLogEvent
-import grails.plugins.orm.auditable.AuditLogListener
-import grails.plugins.orm.auditable.AuditLogListenerUtil
 import grails.plugins.*
-import groovy.transform.*
 import org.grails.datastore.mapping.core.*
 
 /**
@@ -89,7 +85,7 @@ When called, the event handlers have access to oldObj and newObj definitions tha
         boolean logIds = config.getProperty("auditLog.logIds", Boolean, false)
         String sessionAttribute = config.getProperty("auditLog.sessionAttribute", String, "")
         String actorKey = config.getProperty("auditLog.actorKey", String, "")
-        Integer truncateLength = config.getProperty("auditLog.truncateLength", Integer, determineDefaultTruncateLength() )
+        Integer truncateLength = config.getProperty("auditLog.truncateLength", Integer, determineDefaultTruncateLength(applicationContext) )
         Closure actorClosure = config.getProperty("auditLog.actorClosure", Closure, AuditLogListenerUtil.actorDefaultGetter)
         String propertyMask = config.getProperty("auditLog.propertyMask", String, "**********")
 
@@ -124,7 +120,9 @@ When called, the event handlers have access to oldObj and newObj definitions tha
     /**
      * The default truncate length is 255 unless we are using the largeValueColumnTypes, then we allow up to the column size
      */
-    private Integer determineDefaultTruncateLength() {
-        AuditLogEvent.constrainedProperties.oldValue?.maxSize ?: 255
+    private Integer determineDefaultTruncateLength(ctx) {
+        String domainClassName = grailsApplication.config.auditLog.auditLogDomainClassName
+        def dc = ctx.grailsApplication.getDomainClass(domainClassName)
+        dc.constrainedProperties.oldValue?.maxSize ?: 255
     }
 }

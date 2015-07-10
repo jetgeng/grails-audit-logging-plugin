@@ -41,6 +41,8 @@ import org.springframework.web.context.request.RequestContextHolder
 class AuditLogListener extends AbstractPersistenceEventListener {
   def grailsApplication
 
+  Class auditLogEventClass = getClassForName(auditLogConfig.auditLogDomainClassName)
+
   /**
    * The verbose flag flips on and off column by column change logging in
    * insert and delete events. If this is true then all columns are logged
@@ -505,7 +507,7 @@ class AuditLogListener extends AbstractPersistenceEventListener {
       log.trace "There are new and old values to log"
       newMap.each { String key, val ->
         if (val != oldMap[key]) {
-          def audit = new AuditLogEvent(
+          def audit = auditLogEventClass.newInstance(
             actor:getActor(),
             uri:getUri(domain),
             className:className,
@@ -523,7 +525,7 @@ class AuditLogListener extends AbstractPersistenceEventListener {
     if (newMap && verbose && !AuditLogListenerThreadLocal.auditLogNonVerbose) {
       log.trace "there are new values and logging is verbose ... "
       newMap.each { String key, val ->
-        def audit = new AuditLogEvent(
+        def audit = auditLogEventClass.newInstance(
           actor:getActor(),
           uri:getUri(domain),
           className:className,
@@ -540,7 +542,7 @@ class AuditLogListener extends AbstractPersistenceEventListener {
     if (oldMap && verbose && !AuditLogListenerThreadLocal.auditLogNonVerbose) {
       log.trace "there is only an old map of values available and logging is set to verbose... "
       oldMap.each { String key, val ->
-        def audit = new AuditLogEvent(
+        def audit = auditLogEventClass.newInstance(
           actor:getActor(),
           uri:getUri(domain),
           className:className,
@@ -556,7 +558,7 @@ class AuditLogListener extends AbstractPersistenceEventListener {
     }
     // default
     log.trace "creating a basic audit logging event object."
-    def audit = new AuditLogEvent(
+    def audit = auditLogEventClass.newInstance(
       actor:getActor(),
       uri:getUri(domain),
       className:className,
@@ -696,15 +698,15 @@ class AuditLogListener extends AbstractPersistenceEventListener {
    *
    * SEE: GRAILSPLUGINS-391
    */
-  def saveAuditLog = { AuditLogEvent audit ->
+  def saveAuditLog = { def audit ->
     audit.with {
       dateCreated = lastUpdated = new Date()
     }
     log.info audit
     try {
-      AuditLogEvent.withNewSession {
+      auditLogEventClass.withNewSession {
         if (transactional) {
-          AuditLogEvent.withTransaction {
+          auditLogEventClass.withTransaction {
             audit.merge(flush:true, failOnError:true)
           }
         } else {
@@ -713,7 +715,7 @@ class AuditLogListener extends AbstractPersistenceEventListener {
       }
     }
     catch (e) {
-      log.error "Failed to create AuditLogEvent for ${audit}: ${e.message}"
+      log.error "Failed to create ${auditLogEventClass.name} for ${audit}: ${e.message}"
     }
   }
 
@@ -742,4 +744,10 @@ class AuditLogListener extends AbstractPersistenceEventListener {
       AuditLogListenerThreadLocal.clearAuditLogDisabled()
     }
   }
+
+  protected Class<?> getClassForName(String name) {
+    auditLogConfig.useExternalClasses ? Class.forName(name) : grailsApplication.getClassForName(name)
+  }
+
+  protected ConfigObject getAuditLogConfig() { AuditLogListenerUtil.auditLogConfig }
 }
